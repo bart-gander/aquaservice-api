@@ -76,6 +76,7 @@ def request_bytes(request, *, pdf=False):
 
 
 def load_credentials(path):
+    """Load and validate a private credential file; never prints its contents."""
     fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     with os.fdopen(fd) as handle:
         info = os.fstat(handle.fileno())
@@ -105,6 +106,7 @@ def api(credentials, path, extra):
 
 
 def get_next_delivery_date(credentials):
+    """Return datetime.date or None; raise ClientError for API/schema failures."""
     response = api(credentials, "delivery/next-delivery", {})
     delivery = response["success"]
     if "delivery_date" not in delivery:
@@ -129,6 +131,7 @@ def invoice_date(invoice):
 
 
 def list_invoices(credentials):
+    """Return (raw response, newest-first invoice records), containing private data."""
     response = api(credentials, "invoice/", {"accountFilter": credentials["accountFilter"]})
     records = response["success"].get("invoices")
     if not isinstance(records, list):
@@ -150,6 +153,7 @@ def list_invoices(credentials):
 
 
 def get_pdf(credentials, invoice):
+    """Return validated PDF bytes for one invoice without writing a file."""
     extras = {k: invoice[k] for k in ("delegation", "accountCode", "invoiceType")}
     extras.update({"invoiceExt": "pdf", "title-document": invoice["textDocument"],
                    "pending-amount": str(invoice["amount"])})
@@ -253,9 +257,10 @@ def sync(credentials, response, records, destination):
     return 1 if report["failed"] or report["not_attempted"] else 0
 
 
-def main(argv=None):
+def main(argv=None, *, default_directory=None):
+    default_directory = Path.cwd() if default_directory is None else Path(default_directory)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--credentials", type=Path, default=ROOT / "credentials.json")
+    parser.add_argument("--credentials", type=Path, default=default_directory / "credentials.json")
     subs = parser.add_subparsers(dest="command", required=True)
     invoices = subs.add_parser("invoices", help="List or download invoices")
     invoice_subs = invoices.add_subparsers(dest="invoice_command", required=True)
@@ -264,7 +269,7 @@ def main(argv=None):
         command.add_argument("--since", type=dt.date.fromisoformat, help="Inclusive YYYY-MM-DD filter")
         command.add_argument("--limit", type=int, help="Newest N records; omitted means all returned records")
         if name == "sync":
-            command.add_argument("--output", type=Path, default=ROOT / "invoices")
+            command.add_argument("--output", type=Path, default=default_directory / "invoices")
     subs.add_parser("next-delivery", help="Print the next delivery date as YYYY-MM-DD")
     args = parser.parse_args(argv)
     if args.command == "next-delivery":
@@ -288,10 +293,17 @@ def main(argv=None):
     return sync(credentials, response, records, args.output)
 
 
-if __name__ == "__main__":
+def cli(argv=None, *, default_directory=None):
+    """Console entry point with sanitized errors and process-compatible exit codes."""
     try:
-        sys.exit(main())
+        return main(argv, default_directory=default_directory)
     except (ClientError, OSError, ValueError) as exc:
         message = str(exc) if isinstance(exc, ClientError) else type(exc).__name__
         print("Error: " + message, file=sys.stderr)
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    # Preserve script-relative paths for direct source execution. Installed console
+    # and `python -m aquaservice` commands must not write into site-packages.
+    sys.exit(cli(default_directory=ROOT if __spec__ is None else None))

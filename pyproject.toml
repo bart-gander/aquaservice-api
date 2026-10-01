@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aquaservice-api"
+version = "0.1.0"
+description = "Unofficial read-only client for Aquaservice Spain invoices and next delivery dates."
+readme = "readme.md"
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.urls]
+Repository = "https://github.com/bart-gander/aquaservice-api"
+
+[project.scripts]
+aquaservice-api = "aquaservice:cli"
+
+# Positive allowlists keep credentials, invoices, and research out of both artifacts.
+[tool.hatch.build.targets.wheel]
+only-include = ["aquaservice.py"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    ".gitignore",
+    "aquaservice.py",
+    "pyproject.toml",
+    "readme.md",
+    "credentials.json.example",
+]

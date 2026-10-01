@@ -4,9 +4,72 @@ Download your Aquaservice Spain invoices and check your next delivery date witho
 
 ## Requirements
 
-- Python 3.10 or newer; no packages to install.
+- Python 3.10 or newer; no third-party runtime dependencies.
 - An Aquaservice account and an authenticated session in the customer website.
-- A private `credentials.json` file alongside `aquaservice.py`.
+- A private `credentials.json` file (see path defaults below).
+
+## Installation
+
+Install this checkout into a virtual environment:
+
+```sh
+cd /path/to/aquaservice-api
+uv venv
+uv pip install .
+.venv/bin/aquaservice-api --help
+```
+
+With an activated virtual environment, `python -m pip install .` also works.
+The distribution is named **`aquaservice-api`**; the importable module is
+**`aquaservice`**. The installed command is `aquaservice-api`.
+Direct execution with `python3 aquaservice.py` remains supported without installation.
+
+Once the packaging changes are published to GitHub, another project's
+`pyproject.toml` can declare this dependency without requiring a separate clone:
+
+```toml
+dependencies = [
+    "aquaservice-api @ git+https://github.com/bart-gander/aquaservice-api.git@<full-commit-sha>",
+]
+```
+
+Replace `<full-commit-sha>` with a published commit containing `pyproject.toml`;
+it is a placeholder, not a usable revision. `uv sync` (or pip installing that
+project) fetches and installs the dependency automatically. Git must be available
+for VCS installation; PyPI publication is not required.
+
+## Python library
+
+Normal imports reuse the same code as the CLI; importing the module does not read
+credentials, call the API, or run the CLI:
+
+```python
+from pathlib import Path
+from aquaservice import ClientError, get_next_delivery_date, load_credentials
+
+try:
+    credentials = load_credentials(Path("/private/path/credentials.json"))
+    delivery_date = get_next_delivery_date(credentials)
+except (ClientError, OSError, ValueError):
+    # Do not log credentials or raw exception/response contents.
+    print("Unable to retrieve the next delivery date.")
+else:
+    print(delivery_date.isoformat() if delivery_date is not None else "No scheduled delivery")
+```
+
+Available functions include:
+
+| Function | Result / behavior |
+|---|---|
+| `load_credentials(path)` | Validated credential dictionary; requires a private regular file. |
+| `get_next_delivery_date(credentials)` | `datetime.date` or `None`; malformed/missing API fields raise `ClientError`. |
+| `list_invoices(credentials)` | `(raw_response, newest_first_records)`; both contain private account data. |
+| `get_pdf(credentials, invoice)` | Validated PDF `bytes`; no files written. |
+| `sync(credentials, response, records, destination)` | Writes private snapshots/PDFs/reports, prints progress, and returns an exit status (`0` on success). `destination` is a `pathlib.Path`. |
+
+Library calls are synchronous. Credential and local-file errors may raise
+`OSError` or `ValueError`; expected API failures raise `ClientError`. Keep credential
+files and returned account data outside shared logs and package artifacts.
 
 ## Export credentials from the website
 
@@ -80,7 +143,7 @@ Only run console snippets you understand and trust. This one reads the site's ex
 
 ### Install the downloaded file
 
-Place the downloaded file next to `aquaservice.py`, then restrict permissions:
+For direct source execution, place the downloaded file next to `aquaservice.py`, then restrict permissions:
 
 ```sh
 cd /path/to/aquaservice-api
@@ -119,6 +182,16 @@ If the website changes its storage layout, inspect the successful **Fetch/XHR** 
 
 ## Usage
 
+After installation, use the same subcommands with `aquaservice-api` (or
+`python -m aquaservice` in that environment):
+
+```sh
+aquaservice-api --credentials /private/path/credentials.json next-delivery
+aquaservice-api --credentials /private/path/credentials.json invoices list --limit 1
+```
+
+Source checkout equivalents:
+
 ```sh
 # List all invoices currently returned for the configured account.
 python3 aquaservice.py invoices list
@@ -145,7 +218,13 @@ Invoice operations are now grouped under `invoices`: use `invoices list` and `in
 
 `next-delivery` uses the same credential file and reads the API's `success.delivery_date`. It prints the reported date as `YYYY-MM-DD`, without calculating or inferring a schedule. An explicitly empty/null date prints a no-date message; a missing or malformed field is an error. The command does not place, reschedule or change a delivery, and it does not download invoices.
 
-`--since` is inclusive. `--limit` selects the newest N records after date filtering. By default, credentials and the `invoices/` directory are resolved relative to the script, not your shell's working directory. An explicitly supplied relative path is relative to the working directory.
+`--since` is inclusive. `--limit` selects the newest N records after date filtering.
+For the installed `aquaservice-api` command and `python -m aquaservice`, the default
+`credentials.json` and `invoices/` paths are relative to your working directory,
+never the installation's `site-packages`. Direct `python3 /path/to/aquaservice.py`
+execution preserves the original script-relative defaults. An explicitly supplied
+relative path is always relative to the working directory. Use absolute
+`--credentials` and `--output` paths for scheduled jobs.
 
 ## Output and repeat runs
 
@@ -182,3 +261,7 @@ This is an undocumented private API. Routes, response shapes and permitted PDF h
 - Ignoring a path does not remove a file that was already committed or staged. Check `git status` before committing.
 - Browser localStorage exports can be stale. Validate against the API rather than treating successful export as a successful login.
 - The script does not make payments, change account details, or perform PIN/SMS setup.
+- Build with `uv build`. Wheel and source-distribution contents use explicit file
+  allowlists; real credentials, downloaded invoices, tests, and research are not
+  packaged. Only the placeholder credential example is included in the source
+  distribution. Do not replace its placeholders with account data.
