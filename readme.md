@@ -61,7 +61,7 @@ Available functions include:
 
 | Function | Result / behavior |
 |---|---|
-| `load_credentials(path)` | Validated credential dictionary; requires a private regular file. |
+| `load_credentials(path)` | Validated credential dictionary; follows Secret symlinks and requires a regular file without group/world write access. |
 | `get_next_delivery_date(credentials)` | `datetime.date` or `None`; malformed/missing API fields raise `ClientError`. |
 | `list_invoices(credentials)` | `(raw_response, newest_first_records)`; both contain private account data. |
 | `get_pdf(credentials, invoice)` | Validated PDF `bytes`; no files written. |
@@ -162,6 +162,27 @@ chmod 600 credentials.json
 Check the actual download filename: browsers may save repeated exports as `credentials (1).json` or similar. If refreshing an existing configuration, deliberately replace the correct file, then apply `chmod 600` again. Remove unneeded credential copies from Downloads and its cloud/backups as appropriate; the browser snippet cannot set filesystem permissions.
 
 The snippet validates the storage structure, **not the server-side validity of the token**. The `invoices list --limit 1` command is the actual authentication check. If fields are missing, do not invent them: log in again, choose the contract, and let the portal finish loading.
+
+### Kubernetes and managed secret mounts
+
+Starting with **v0.1.1**, `load_credentials` supports Kubernetes Secret projections:
+it follows the mounted symlink on each call and validates the opened file descriptor.
+Read-only sharing modes such as `0440`, `0444`, `0640`, and the Kubernetes default
+`0644` are accepted alongside `0400`/`0600`. Files writable by group or others
+(for example `0660`/`0666`), directories, and FIFOs are rejected. JSON/schema
+validation is unchanged. No chmod, chown, or writable copy of the Secret is needed.
+
+The process must still have operating-system read access. Mount the Secret volume
+read-only and restrict which workloads can mount it. Prefer `0440` with an
+appropriate `fsGroup` when group-based access is configured; `0644` works with the
+default projected volume permissions. Keep local standalone credentials at `0600`
+and use trusted parent directories: the loader no longer prohibits shared read
+access or symlinks and cannot determine whether every reader is authorized.
+
+For rotation, pass the stable mounted path, not its resolved timestamped target,
+and call `load_credentials` again when credentials are needed. Mount the Secret
+directory rather than using `subPath`, which does not receive Secret updates.
+This change does not relax private invoice-output directory/file permissions.
 
 ### Credential fields
 

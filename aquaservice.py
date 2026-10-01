@@ -76,13 +76,20 @@ def request_bytes(request, *, pdf=False):
 
 
 def load_credentials(path):
-    """Load and validate a private credential file; never prints its contents."""
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    with os.fdopen(fd) as handle:
-        info = os.fstat(handle.fileno())
-        if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o077:
-            raise ClientError("Credentials must be a regular private file (chmod 600).")
-        value = json.load(handle)
+    """Read credentials, including rotating Secret symlinks; never print contents.
+
+    Shared read access is allowed for managed secret mounts. Shared write access
+    is not. Validate the opened descriptor, not the potentially rotating path.
+    """
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o022:
+            raise ClientError("Credentials must be a regular file without group/world write access.")
+        with os.fdopen(fd, encoding="utf-8", closefd=False) as handle:
+            value = json.load(handle)
+    finally:
+        os.close(fd)
     required = ("application", "token", "pin", "contract", "delegation", "accountFilter")
     if not isinstance(value, dict) or any(not isinstance(value.get(k), str) or not value[k] for k in required):
         raise ClientError("Credentials require non-empty string fields: " + ", ".join(required))

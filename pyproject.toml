@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aquaservice-api"
-version = "0.1.0"
+version = "0.1.1"
 description = "Unofficial read-only client for Aquaservice Spain invoices and next delivery dates."
 readme = "readme.md"
 requires-python = ">=3.10"
