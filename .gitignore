@@ -1,0 +1,13 @@
+# Local authentication credentials
+credentials.json
+
+# Downloaded invoices and private API exports
+invoices/
+exports/
+*.private.json
+*.private.pdf
+
+# Python and macOS artifacts
+__pycache__/
+*.py[cod]
+.DS_Store
